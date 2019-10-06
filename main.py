@@ -59,16 +59,19 @@ class NeuralNetwork:
         # Initialize your weight matrices first.
         # (hint: check the sizes of your weight matrices first!)
         
-        
+        for epoch in xrange(epochs):
+            for i in xrange(len(X)):
+                x = X[i]
+                y = Y[i]
+                forward(x)
         # For each epoch, do
             # For each training sample (X[i], Y[i]), do
                 # 1. Forward propagate once. Use the function "forward" here!
                 l, dl = getCost(output_layer.nodes, y)
+
+                backpropagate(l, dl, learningRate)
                 
                 # 2. Backward progate once. Use the function "backpropagate" here!
-                
-                
-        pass
         
 
     def predict(self, X):
@@ -83,7 +86,12 @@ class NeuralNetwork:
             The predictions of X.
         ----------
         """
-        return YPredict
+        for i in xrange(len(X)):
+            forward(X)
+        y = numpy.zeros((len(X), 1))
+        for i in xrange(len(X)):
+            y[i] = self.output_layer.nodes[i][0].y
+        return y
 
     def forward(self, X):
         X = np.dot(input_layer.W, X)
