@@ -5,16 +5,14 @@ class Node:
     def __init__(self):
         self.x = 0
         self.y = 0
-        self.dy = 0
-        self.dx = 0
+        self.dlx = 0
 
     def forward_update(self, x, y):
         self.x = x
         self.y = y
 
-    def back_update(self, dy, dx):
-        self.dy = dy
-        self.dx = dx
+    def back_update(self, dlx):
+        self.dlx = dlx
 
 class Layer:
     def __init__(self, n_connections, n_nodes):
@@ -32,60 +30,26 @@ class Layer:
         self.W = W
 
 class NeuralNetwork:
-    def __init__(self, NNodes, activate, deltaActivate, inputDimension, loss):
+    def __init__(self, NNodes, activate, deltaActivate, inputDimension, loss, n_classes):
         self.NNodes = NNodes # the number of nodes in the hidden layer
         self.activate = activate # a function used to activate
         self.deltaActivate = deltaActivate # the derivative of activate
         self.inputDimension = inputDimension
         self.input_layer = Layer(NNodes, inputDimension + 1)
         self.hidden_layer = Layer(1, NNodes + 1)
-        self.output_layer = Layer(1, 1)
+        self.output_layer = Layer(1, n_classes)
         self.loss = loss
-        self.forward_output = -1
     
     def fit(self, X, Y, learningRate, epochs, regLambda):
-        """
-        This function is used to train the model.
-        Parameters
-        ----------
-        X : numpy matrix
-            The matrix containing sample features for training.
-        Y : numpy array
-            The array containing sample labels for training.
-        Returns
-        -------
-        None
-        """
-        # Initialize your weight matrices first.
-        # (hint: check the sizes of your weight matrices first!)
-        
         for epoch in xrange(epochs):
             for i in xrange(len(X)):
                 x = X[i]
                 y = Y[i]
                 forward(x)
-        # For each epoch, do
-            # For each training sample (X[i], Y[i]), do
-                # 1. Forward propagate once. Use the function "forward" here!
                 l, dl = getCost(output_layer.nodes, y)
-
                 backpropagate(l, dl, learningRate)
-                
-                # 2. Backward progate once. Use the function "backpropagate" here!
-        
 
     def predict(self, X):
-        """
-        Predicts the labels for each sample in X.
-        Parameters
-        X : numpy matrix
-            The matrix containing sample features for testing.
-        Returns
-        -------
-        YPredict : numpy array
-            The predictions of X.
-        ----------
-        """
         for i in xrange(len(X)):
             forward(X)
         y = numpy.zeros((len(X), 1))
@@ -100,29 +64,27 @@ class NeuralNetwork:
         X = np.dot(hidden_layer.W, X)
         output_layer.forward_update(X, activation(X))
         X = activation(X)
-        # Perform matrix multiplication and activation twice (one for each layer).
-        # (hint: add a bias term before multiplication)
 
     def updateWeights(self, W, nodes, forward_nodes, layer):
-        for i in xrange(len(forward_nodes)):
-            dy = 0
-            dx = 0
-            for j in xrange(len(nodes)):
-                node = nodes[j][0]
-                W[i][j] -= lr * node.y * forward_nodes[i][0].dx
-                dy = W[i][j] * forward_nodes[i][0].dx
-                dx += self.deltaActivate(node.x) * dy
-            nodes[i][0].back_update(dy, dx)
+        for i in xrange(len(nodes)):
+            dlx = 0
+            node = nodes[i][0]
+            for j in xrange(len(forward_nodes)):
+                fnode = forward_nodes[j][0]
+                dly = fnode.dlx * W[i][j]
+                W[i][j] -= lr * node.y * fnode.dlx
+                dlx += dly
+            dlx *= self.deltaActivate(node.x)
+            node.back_update(dlx)
         layer.back_update(W)
         
     def backpropagate(self, l, dl, lr):
         # Compute gradient for each layer.
         #Output layer update
-        for node in output_layer.nodes:
-            node = node[0]
-            dy = dl
-            dx = self.deltaActivate(node.x) * dy
-            node.back_update(dy, dx)
+        for i in xrange(len(output_layer.nodes)):
+            output_node = output_layer.nodes[i][0]
+            dlx = dl * self.deltaActivate(output_node.x)
+            output_node.back_update(dlx)
 
         W = hidden_layer.W
         nodes = hidden_layer.nodes
