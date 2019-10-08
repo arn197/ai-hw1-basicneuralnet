@@ -41,15 +41,6 @@ def splitData(X, Y, K = 5):
     # print(K_Split[0][0][1])
     return K_Split
 
-def crossValidate(X_train,Y_train,X_test,Y_test,l_rate,epochs, reg_lambda):
-    model = train(X_train,Y_train, [l_rate,epochs,reg_lambda])
-    plotDecisionBoundary(model, X_train, Y_train)
-    Y_pred = test(X_test,model)
-    pf = getPerformanceScores(Y_test,Y_pred)
-    print("Accuracy: {}\t Precision: {} \t Recall: {} \t F1: {}".format(pf["accuracy"],pf["precision"],pf["recall"],pf["f1"]))
-
-
-
 #%%
 # X,Y = getData(["./Data/DataFor640/dataset1","lin"])
 # # print(X.shape)
@@ -57,15 +48,3 @@ def crossValidate(X_train,Y_train,X_test,Y_test,l_rate,epochs, reg_lambda):
 # Ksp = splitData(X,Y)
 # print(Ksp[0])
 #%%
-def main():
-    X,Y = getData(["./Data/DataFor640/dataset1","lin"])
-    K_split_data = splitData(X,Y)
-
-    for itrain,itest in K_split_data:
-        
-        X_Train, Y_Train = X[itrain],Y[itrain]
-        X_Test, Y_Test = X[itest],Y[itest]
-        print(X_train[:5])
-
-        crossValidate(X_Train,Y_Train,X_Test,Y_Test,lr,ep,reg_lambda)
-main()
