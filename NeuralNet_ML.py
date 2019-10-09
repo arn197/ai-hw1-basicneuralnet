@@ -96,19 +96,23 @@ class TwoLayerMLP(object):
     scores = np.dot(h1,W2) + b2
 
      
-    ###########################################################################
+    ####################################s#######################################
     #                            END OF YOUR CODE
     ###########################################################################
     
     # If the targets are not given then jump out, we're done
     if y is None:
       return scores
-
+      """
+    scores_f = np.expit(scores)
+    loss =
+    """
     # cross-entropy loss with log-sum-exp
     A = np.max(scores, axis=1) # N*1
     F = np.exp(scores - A.reshape(N, 1))  # N*C
     P = F / np.sum(F, axis=1).reshape(N, 1)  # N*C
     loss = np.mean(-np.choose(y, scores.T) + np.log(np.sum(F, axis=1)) + A)
+
     # add regularization terms
     loss += 0.5 * reg * np.sum(W1 * W1)
     loss += 0.5 * reg * np.sum(W2 * W2)
@@ -282,23 +286,28 @@ def getConfusionMatrix(YTrue, YPredict):
                 
 
 def main():
-    
-       dfx = pd.read_csv("../Data/Datafor640/dataset1/LinearX.csv")
-       dfy = pd.read_csv("../Data/Datafor640/dataset1/LinearY.csv")
+    dfx = pd.read_csv("./Data/Datafor640/dataset1/LinearX.csv")
+    dfy = pd.read_csv("./Data/Datafor640/dataset1/LinearY.csv")
+    X = np.array(dfx)
+    Y = np.array(dfy)
+    Y_int = Y.astype(int)
+      #     X.reshape(897*64,1)
        
-       X = np.array(dfx)
-       Y = np.array(dfy)
-       Y_int = Y.astype(int)
-       net = TwoLayerMLP(X.shape[1],2,2,2,"sigmoid")
-       stats = net.train(X, Y_int, X, Y_int,
-                  learning_rate=2, reg=1e-5,
-                  num_epochs=1000, verbose=False)
-       print('Final training loss: ', stats['loss_history'][-1])
-       output = net.predict(X)
-       print(getConfusionMatrix(Y_int,output.reshape(output.shape[0],1)))
-       
+    net = TwoLayerMLP(X.shape[1],3,2,5,"sigmoid")
+    stats = net.train(X, Y_int, X, Y_int.flatten(),learning_rate=1.2, reg=1e-5,  num_epochs=6, verbose=True)
+    output = net.predict(X)
+    print(getConfusionMatrix(Y_int.flatten(),output))
+    print('Final training loss: ', stats['loss_history'][-1])
+
+    # plot the loss history and gradient magnitudes
+    plt.subplot(2, 1, 1)
+    plt.plot(stats['loss_history'])
+    plt.xlabel('epoch')
+    plt.ylabel('training loss')
+    plt.title('Training Loss history')
           
     
       
 if __name__ == '__main__':
+    random.seed(0)
     main()
