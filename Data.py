@@ -40,11 +40,3 @@ def splitData(X, Y, K = 5):
     K_Split = np.array(K_Split)
     # print(K_Split[0][0][1])
     return K_Split
-
-#%%
-# X,Y = getData(["./Data/DataFor640/dataset1","lin"])
-# # print(X.shape)
-# # print(Y.shape)
-# Ksp = splitData(X,Y)
-# print(Ksp[0])
-#%%
