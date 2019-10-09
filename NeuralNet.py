@@ -36,26 +36,34 @@ class NeuralNetwork:
         self.input_layer = Layer(NNodes, inputDimension)
         self.hidden_layer = Layer(1, NNodes)
         self.output_layer = Layer(1, n_classes)
-        self.bias = 1
     
     def fit(self, X, Y, learningRate, epochs, regLambda):
+        X = X.T
         for epoch in xrange(epochs):
-            for i in xrange(len(X)):
-                x = X[i]
-                y = Y[i]
-                self.forward(x)
-                l, dl = self.getCost(self.output_layer.nodes, y)
-                self.backpropagate(l, dl, learningRate)
+            Y_pred = self.forward(X)
+            print Y_pred
+            l = self.getCost(Y_pred, Y)
+            dl = self.delta_cross_entropy(Y_pred, Y)
+            self.backpropagate(l, dl, learningRate)
+            # for i in xrange(len(X)):
+            #     x = X[i]
+            #     y = Y[i]
+            #     Y_pred = self.forward(x)
+            #     l, dl = self.getCost(self.output_layer.nodes, y)
+            #     self.backpropagate(l, dl, learningRate)
 
     def predict(self, X):
-        y = []
-        for i in xrange(len(X)):
-            self.forward(X[i])
-            y.append(self.output_layer.nodes[0].y)
-        return np.array(y)
+        return self.forward(X)
+        # y = []
+        # for i in xrange(len(X)):
+        #     self.forward(X[i])
+        #     y.append(self.output_layer.nodes[0].y)
+        # return np.array(y)
 
     def forward(self, X):
         # X = np.append(X, self.bias)
+        self.input_layer.forward_update(X, X)
+
         X = np.dot(self.input_layer.W, X)
         self.hidden_layer.forward_update(X, self.activate(X))
         X = self.activate(X)
@@ -63,15 +71,19 @@ class NeuralNetwork:
         X = np.dot(self.hidden_layer.W, X)
         self.output_layer.forward_update(X, self.activate(X))
         X = self.activate(X)
+        return X
 
     def updateWeights(self, W, nodes, forward_nodes, layer, lr):
         for i in xrange(len(nodes)):
-            dlx = 0
             node = nodes[i]
+            # print node.y
+            # print node.x
+            m = node.y.shape[0]
+            dlx = np.zeros((m))
             for j in xrange(len(forward_nodes)):
                 fnode = forward_nodes[j]
                 dly = fnode.dlx * W[j][i]
-                W[j][i] -= lr * node.y * fnode.dlx
+                W[j][i] -= lr * np.dot(node.y,fnode.dlx)
                 dlx += dly
             dlx *= self.deltaActivate(node.x)
             node.back_update(dlx)
@@ -96,45 +108,32 @@ class NeuralNetwork:
         self.updateWeights(W, nodes, forward_nodes, self.input_layer, lr)
 
         # Update weight matrices.
-        
-    def getCost(self, YPredict, YTrue):
-        cost = 0
-        cost += (YPredict[0].y - YTrue)**2
-        return cost, -1
-        # Compute loss / cost in terms of crossentropy.
-        # (hint: your regularization term should appear here)
 
-def getData(dataDir):
-    '''
-    Returns
-    -------
-    X : numpy matrix
-        Input data samples.
-    Y : numpy array
-        Input data labels.
-    '''
-    # TO-DO for this part:
-    # Use your preferred method to read the csv files.
-    # Write your codes here:
-    
-    
-    # Hint: use print(X.shape) to check if your results are valid.
-    return X, Y
+    def stable_softmax(self, X):
+        exps = np.exp(X - np.max(X))
+        return exps / np.sum(exps)
 
-def splitData(X, Y, K = 5):
-    '''
-    Returns
-    -------
-    result : List[[train, test]]
-        "train" is a list of indices corresponding to the training samples in the data.
-        "test" is a list of indices corresponding to the testing samples in the data.
-        For example, if the first list in the result is [[0, 1, 2, 3], [4]], then the 4th
-        sample in the data is used for testing while the 0th, 1st, 2nd, and 3rd samples
-        are for training.
-    '''
-    
-    # Make sure you shuffle each train list.
-    pass
+    def getCost(self, X, y):
+        X = X.T.flatten()
+        m = y.shape[0]
+        p = X
+        log_likelihood = - y * np.log(p[range(m)])
+        loss = np.sum(log_likelihood) / m
+        return loss
+
+    def delta_cross_entropy(self, X, y):
+        """
+        X is the output from fully connected layer (num_examples x num_classes)
+        y is labels (num_examples x 1)
+            Note that y is not one-hot encoded vector. 
+            It can be computed as y.argmax(axis=1) from one-hot encoded vectors of labels if required.
+        """
+        X = X.T.flatten()
+        m = y.shape[0]
+        grad = self.stable_softmax(X)
+        grad[range(m)] -= y
+        grad = grad/m
+        return np.sum(grad)
 
 def plotDecisionBoundary(model, X, Y):
     """
@@ -182,61 +181,8 @@ def train(XTrain, YTrain, args):
     model = NeuralNetwork(hidden_layer, sigmoid, deltasig, inputDimension, n_classes)
     model.fit(XTrain, YTrain, lr, epochs, reg)
     return model
-    
-    # 2. Train the model with the function "fit".
-    # (hint: use the plotDecisionBoundary function to visualize after training)
-    
-    
-    # 3. Return the model.
-    
-    pass
 
 def test(XTest, model):
-    """
-    This function is used for the testing phase.
-    Parameters
-    ----------
-    XTest : numpy matrix
-        The matrix containing samples features (not indices) for testing.
-    model : NeuralNetwork object
-        This should be a trained NN model.
-    Returns
-    -------
-    YPredict : numpy array
-        The predictions of X.
-    """
-    return model.predict(XTest)
-
-def getConfusionMatrix(YTrue, YPredict):
-    """
-    Computes the confusion matrix.
-    Parameters
-    ----------
-    YTrue : numpy array
-        This array contains the ground truth.
-    YPredict : numpy array
-        This array contains the predictions.
-    Returns
-    CM : numpy matrix
-        The confusion matrix.
-    """
-    pass
-    
-def getPerformanceScores(YTrue, YPredict):
-    """
-    Computes the accuracy, precision, recall, f1 score.
-    Parameters
-    ----------
-    YTrue : numpy array
-        This array contains the ground truth.
-    YPredict : numpy array
-        This array contains the predictions.
-    Returns
-    {"CM" : numpy matrix,
-    "accuracy" : float,
-    "precision" : float,
-    "recall" : float,
-    "f1" : float}
-        This should be a dictionary.
-    """
-    pass
+    out = model.predict(XTest.T)
+    out[out >= 0.9] = 1
+    return out

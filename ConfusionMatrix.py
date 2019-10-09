@@ -15,6 +15,7 @@ def getConfusionMatrix(YTrue, YPredict):
     CM : numpy matrix
         The confusion matrix.
     """
+    YPredict = YPredict.T.flatten()
     len_labels = len(np.unique(YTrue))
     cm = np.zeros((len_labels ,len_labels ), int )
     for i in range(len(YTrue)):
@@ -42,7 +43,7 @@ def getPerformanceScores(YTrue, YPredict):
     """
     cm = getConfusionMatrix(YTrue,YPredict)
     true_values = np.sum(np.diagonal(cm))
-    accuracy = true_values/len(YTrue)
+    accuracy = float(true_values)/len(YTrue)
     precision = 0
     recall = 0
     f1 = 0
