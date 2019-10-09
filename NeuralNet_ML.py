@@ -282,23 +282,22 @@ def getConfusionMatrix(YTrue, YPredict):
                 
 
 def main():
-    
-       dfx = pd.read_csv("../Data/Datafor640/dataset1/LinearX.csv")
-       dfy = pd.read_csv("../Data/Datafor640/dataset1/LinearY.csv")
+    home = "/home/arn197/buf19/ai/p1/ai-hw1-basicneuralnet/"
+    fx = open("Data/DataFor640/dataset1/LinearX.csv")
+    fy = open("Data/DataFor640/dataset1/LinearY.csv")
+    dfx = pd.read_csv(fx)
+    dfy = pd.read_csv(fy)
+
+    X = np.array(dfx)
+    Y = np.array(dfy)
+    Y_int = Y.astype(int)
+    net = TwoLayerMLP(X.shape[1],2,2,2,"sigmoid")
+    stats = net.train(X, Y_int, X, Y_int,
+              learning_rate=2, reg=1e-5,
+              num_epochs=1000, verbose=False)
+    print('Final training loss: ', stats['loss_history'][-1])
+    output = net.predict(X)
+    print(getConfusionMatrix(Y_int,output.reshape(output.shape[0],1)))
        
-       X = np.array(dfx)
-       Y = np.array(dfy)
-       Y_int = Y.astype(int)
-       net = TwoLayerMLP(X.shape[1],2,2,2,"sigmoid")
-       stats = net.train(X, Y_int, X, Y_int,
-                  learning_rate=2, reg=1e-5,
-                  num_epochs=1000, verbose=False)
-       print('Final training loss: ', stats['loss_history'][-1])
-       output = net.predict(X)
-       print(getConfusionMatrix(Y_int,output.reshape(output.shape[0],1)))
-       
-          
-    
-      
 if __name__ == '__main__':
     main()

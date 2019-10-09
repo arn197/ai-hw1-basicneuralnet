@@ -11,11 +11,11 @@ def crossValidate(X_train, Y_train, X_test, Y_test, l_rate, epochs, reg_lambda, 
     print("Accuracy: {}\t Precision: {} \t Recall: {} \t F1: {}".format(pf["accuracy"],pf["precision"],pf["recall"],pf["f1"]))
 
 def main():
-	k = 5
-	epochs = 10000
+	k = 2
+	epochs = 1000
 	lr = 0.1
 	reg_lambda = 1
-	architecture = [2, 10, 1]
+	architecture = [2, 5, 1]
 	X,Y = getData(["./Data/DataFor640/dataset1","lin"])
 	K_split_data = splitData(X,Y,k)
 	count = 1
