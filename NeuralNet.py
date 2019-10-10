@@ -73,15 +73,15 @@ class TwoLayerMLP(object):
     N, D = X.shape
     A = np.max(scores, axis=1)
     F = np.exp(scores - A.reshape(N, 1))
-    P = F / np.sum(F, axis=1).reshape(N, 1)
-    loss = np.mean(-np.log(P[range(y.shape[0]), y]))
+    softmax_activation = F / np.sum(F, axis=1).reshape(N, 1)
+    loss = np.mean(-np.log(softmax_activation[range(y.shape[0]), y]))
 
     for i in range(self.size):
         W = self.params['weights'][i]
         loss += 0.5 * reg * np.sum(W * W)
-    return loss, P
+    return loss, softmax_activation
   
-  def backprop(self, X, y, P, activations, reg):
+  def backprop(self, X, y, softmax_activation, activations, reg):
     """
     Backprop function to compute gradients based on loss and layer activations
 
@@ -108,7 +108,7 @@ class TwoLayerMLP(object):
     y_1hot = np.zeros((N,C))
     for i in range(N):
         y_1hot[i,y[i]] = 1
-    dEx = P - y_1hot # partial derivative of loss w.r.t output
+    dEx = softmax_activation - y_1hot # partial derivative of loss w.r.t output
     dW = [0] * self.size # weight gradients array
     dB = [0] * self.size # bias gradients array
 
@@ -155,8 +155,8 @@ class TwoLayerMLP(object):
     for epoch in range(num_epochs):
 
         activations = self.forward(X)
-        loss, P = self.get_loss(X, y, activations[-1], reg)
-        grads = self.backprop(X, y, P, activations[:-1], reg)
+        loss, softmax_activation = self.get_loss(X, y, activations[-1], reg)
+        grads = self.backprop(X, y, softmax_activation, activations[:-1], reg)
         loss_history.append(loss)
 
         for i in range(self.size):
