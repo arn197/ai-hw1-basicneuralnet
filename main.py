@@ -1,4 +1,4 @@
-from NeuralNet_ML import *
+from NeuralNet import *
 from Data import *
 from ConfusionMatrix import *
 import random
