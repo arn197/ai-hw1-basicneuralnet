@@ -1,188 +1,216 @@
 import numpy as np
-import os, sys
+import pandas as pd
+import scipy.special as sp
+import matplotlib.pyplot as plt
 
-class Node:
-    def __init__(self):
-        self.x = 0
-        self.y = 0
-        self.dlx = 0
+class TwoLayerMLP(object):
 
-    def forward_update(self, x, y):
-        self.x = x
-        self.y = y
+  def __init__(self, arch, std=1e-4):
+    """
+    Weights - random values
+    Biases - set to zero
 
-    def back_update(self, dlx):
-        self.dlx = dlx
+    Inputs:
+    - arch: array containing number of nodes in each layer
+    - std: standard deviation used for initializing weights
+    """
+    self.params = {}
+    self.params['weights'] = []
+    self.params['biases'] = []
+    self.size = len(arch) - 1
+    self.arch = arch
+    for i in range(1, len(arch)):
+        self.params['weights'].append(std * np.random.randn(arch[i - 1], arch[i]))
+        self.params['biases'].append(np.zeros(arch[i]))
 
-class Layer:
-    def __init__(self, n_connections, n_nodes):
-        self.n_nodes = n_nodes
-        self.W = np.random.rand(n_connections, n_nodes)
-        self.nodes = [Node()] * n_nodes
+  def forward(self, X):
+    """
+    Runs forward propagation on input
 
-    def forward_update(self, X, Y):
-        for i in range(self.n_nodes):
-            self.nodes[i].forward_update(X[i], Y[i])
+    Parameters
+    ----------
+    Inputs
+    X - Input samples, shape - (N, D)
 
-    def back_update(self, W):
-        self.W = W
+    Outputs
+    acts - List containing the activation array of each layer. Activation array
+    contains the output values of each node in a layer
+    """
+    z = X
+    activations = []
+    for i in range(self.size):
+        #Select weights and bias between each layer
+        W, b = self.params['weights'][i], self.params['biases'][i]
 
-class NeuralNetwork:
-    def __init__(self, NNodes, activate, deltaActivate, inputDimension, n_classes):
-        self.NNodes = NNodes # the number of nodes in the hidden layer
-        self.activate = activate # a function used to activate
-        self.deltaActivate = deltaActivate # the derivative of activate
-        self.inputDimension = inputDimension
-        self.input_layer = Layer(NNodes, inputDimension)
-        self.hidden_layer = Layer(1, NNodes)
-        self.output_layer = Layer(1, n_classes)
+        #Forward prop - done as matrix mult and adding bias at the end
+        z = np.dot(z, W) + b
+        if i == self.size - 1:
+            activations.append(z) 
+            # If the current output value corresponds to the output layer,
+            # don't apply sigmoid to it, softmax will be applied later
+            break
+        z = sp.expit(z)
+        if i < self.size - 1:
+            activations.append(z)
+    return activations
+
+  def get_loss(self, X, y, scores, reg):
+    """
+    Calculates the loss according to the outputs and inputs
+
+    Parameters
+    ----------
+    Inputs
+    X - input matrix, shape - (N, D)
+    y - ground truth array, shape - (N, 1)
+    scores - the last column of activation array, corresponds to outputs at output layer
+    reg - regularization term
+
+    Outputs
+    loss - the loss value calculated using cross entropy
+    P - array containing softmax values of outputs
+    """
+    N, D = X.shape
+    A = np.max(scores, axis=1)
+    F = np.exp(scores - A.reshape(N, 1))
+    P = F / np.sum(F, axis=1).reshape(N, 1)
+    loss = np.mean(-np.log(P[range(y.shape[0]), y]))
+
+    for i in range(self.size):
+        W = self.params['weights'][i]
+        loss += 0.5 * reg * np.sum(W * W)
+    return loss, P
+  
+  def backprop(self, X, y, P, activations, reg):
+    """
+    Backprop function to compute gradients based on loss and layer activations
+
+    Parameters
+    ----------
+    Inputs
+    X - input array, shape - (N, D)
+    y - ground truth array, shape - (N, 1)
+    P - softmax activation of output layer
+    acts - activations of each layer
+    reg - regularization term
+
+    Outputs
+    grads - dictionary containing keys weights and biases, each of which contains the gradients per layer
+    """
+    W1, b1 = self.params['weights'][0], self.params['biases'][0]
+    W2, b2 = self.params['weights'][1], self.params['biases'][1]
+    _, C = W2.shape
+    N, D = X.shape
+    grads = {}
     
-    def fit(self, X, Y, learningRate, epochs, regLambda):
-        X = X.T
-        for epoch in xrange(epochs):
-            Y_pred = self.forward(X)
-            print Y_pred
-            l = self.getCost(Y_pred, Y)
-            dl = self.delta_cross_entropy(Y_pred, Y)
-            self.backpropagate(l, dl, learningRate)
-            # for i in xrange(len(X)):
-            #     x = X[i]
-            #     y = Y[i]
-            #     Y_pred = self.forward(x)
-            #     l, dl = self.getCost(self.output_layer.nodes, y)
-            #     self.backpropagate(l, dl, learningRate)
 
-    def predict(self, X):
-        return self.forward(X)
-        # y = []
-        # for i in xrange(len(X)):
-        #     self.forward(X[i])
-        #     y.append(self.output_layer.nodes[0].y)
-        # return np.array(y)
+    # output layer
+    y_1hot = np.zeros((N,C))
+    for i in range(N):
+        y_1hot[i,y[i]] = 1
+    dEx = P - y_1hot # partial derivative of loss w.r.t output
+    dW = [0] * self.size # weight gradients array
+    dB = [0] * self.size # bias gradients array
 
-    def forward(self, X):
-        # X = np.append(X, self.bias)
-        self.input_layer.forward_update(X, X)
+    # partial derivative of loss w.r.t weight matrix between hidden layer and output layer
+    dW[-1] = np.dot(activations[-1].T, dEx)/N
+    # partial derivative of loss w.r.t output node bias
+    dB[-1] = np.mean(dEx, axis=0)
+    
+    activations = [X] + activations
+    for i in range(self.size - 2, -1, -1):
+        W = self.params['weights'][i + 1]
+        dEy = np.dot(dEx, W.T)
+        dEx = (activations[i + 1]*(1 - activations[i + 1])) * dEy
+        # partial derivative of loss w.r.t weight matrix between hidden layer and output layer
+        dW[i] = np.dot(activations[i].T, dEx)/activations[i].shape[0]
+        dB[i] = np.mean(dEx, axis = 0)
+    grads['weights'] = dW
+    grads['biases'] = dB
 
-        X = np.dot(self.input_layer.W, X)
-        self.hidden_layer.forward_update(X, self.activate(X))
-        X = self.activate(X)
-        # X = np.append(X, self.bias)
-        X = np.dot(self.hidden_layer.W, X)
-        self.output_layer.forward_update(X, self.activate(X))
-        X = self.activate(X)
-        return X
+    return grads
 
-    def updateWeights(self, W, nodes, forward_nodes, layer, lr):
-        for i in xrange(len(nodes)):
-            node = nodes[i]
-            # print node.y
-            # print node.x
-            m = node.y.shape[0]
-            dlx = np.zeros((m))
-            for j in xrange(len(forward_nodes)):
-                fnode = forward_nodes[j]
-                dly = fnode.dlx * W[j][i]
-                W[j][i] -= lr * np.dot(node.y,fnode.dlx)
-                dlx += dly
-            dlx *= self.deltaActivate(node.x)
-            node.back_update(dlx)
-        layer.back_update(W)
-        
-    def backpropagate(self, l, dl, lr):
-        # Compute gradient for each layer.
-        #Output layer update
-        for i in xrange(len(self.output_layer.nodes)):
-            output_node = self.output_layer.nodes[i]
-            dlx = dl * self.deltaActivate(output_node.x)
-            output_node.back_update(dlx)
-
-        W = self.hidden_layer.W
-        nodes = self.hidden_layer.nodes
-        forward_nodes = self.output_layer.nodes
-        self.updateWeights(W, nodes, forward_nodes, self.hidden_layer, lr)
-
-        W = self.input_layer.W
-        nodes = self.input_layer.nodes
-        forward_nodes = self.hidden_layer.nodes
-        self.updateWeights(W, nodes, forward_nodes, self.input_layer, lr)
-
-        # Update weight matrices.
-
-    def stable_softmax(self, X):
-        exps = np.exp(X - np.max(X))
-        return exps / np.sum(exps)
-
-    def getCost(self, X, y):
-        X = X.T.flatten()
-        m = y.shape[0]
-        p = X
-        log_likelihood = - y * np.log(p[range(m)])
-        loss = np.sum(log_likelihood) / m
-        return loss
-
-    def delta_cross_entropy(self, X, y):
-        """
-        X is the output from fully connected layer (num_examples x num_classes)
-        y is labels (num_examples x 1)
-            Note that y is not one-hot encoded vector. 
-            It can be computed as y.argmax(axis=1) from one-hot encoded vectors of labels if required.
-        """
-        X = X.T.flatten()
-        m = y.shape[0]
-        grad = self.stable_softmax(X)
-        grad[range(m)] -= y
-        grad = grad/m
-        return np.sum(grad)
-
-def plotDecisionBoundary(model, X, Y):
+  def train(self, X, y, learning_rate=1e-3, reg=1e-5, num_epochs=10, verbose=False):
     """
-    Plot the decision boundary given by model.
+    Train this neural network using batch gradient descent.
+
+    Inputs
+    X: Training samples, shape - (N, D)
+    y: Training labels, shape - (N, 1)
+    learning_rate: Scalar giving learning rate for optimization
+    reg: Scalar giving regularization strength
+    num_epochs: Number of epochs
+    verbose: boolean; if true print progress during optimization
+
+    Outputs
+    {
+        loss_history : history of loss values for each epoch
+        train_acc_history: history of training accuracy for each epoch
+    }
+    """
+
+    loss_history = []
+    train_acc_history = []
+
+    for epoch in range(num_epochs):
+
+        activations = self.forward(X)
+        loss, P = self.get_loss(X, y, activations[-1], reg)
+        grads = self.backprop(X, y, P, activations[:-1], reg)
+        loss_history.append(loss)
+
+        for i in range(self.size):
+            self.params['weights'][i] -= grads['weights'][i] * learning_rate
+            self.params['biases'][i] -= grads['biases'][i] * learning_rate
+
+        train_acc = (self.predict(X) == y).mean()
+        train_acc_history.append(train_acc)
+        if verbose:
+            print('Epoch %d: loss %f, train_acc %f'%(
+                epoch+1, loss, train_acc))
+
+    return {
+      'loss_history': loss_history,
+      'train_acc_history': train_acc_history,
+    }
+
+
+  def predict(self, X):
+    """
+    Returns the predictions according to the current state of the model
+
     Parameters
     ----------
-    model : model, whose parameters are used to plot the decision boundary.
-    X : input data
-    Y : input labels
-    """
-    x1_array, x2_array = np.meshgrid(np.arange(-4, 4, 0.01), np.arange(-4, 4, 0.01))
-    grid_coordinates = np.c_[x1_array.ravel(), x2_array.ravel()]
-    Z = model.predict(grid_coordinates)
-    Z = Z.reshape(x1_array.shape)
-    plt.contourf(x1_array, x2_array, Z, cmap=plt.cm.bwr)
-    plt.scatter(X[:, 0], X[:, 1], c=y, cmap=plt.cm.bwr)
-    plt.show()
+    Inputs:
+    - X: Numpy array of shape (N, D)
 
-def train(XTrain, YTrain, args):
+    Outputs:
+    - y_pred: Numpy array of shape (N, 1) containing predictions of each sample in X
     """
-    This function is used for the training phase.
+
+    y_pred = self.forward(X)[-1]
+    y_pred = np.exp(y_pred)/np.exp(np.sum(y_pred,axis=1)).reshape(-1,1)
+    y_pred =  np.argmax(y_pred,axis=1)
+    return y_pred
+
+def getConfusionMatrix(YTrue, YPredict):
+    """
+    Computes the confusion matrix.
+    
     Parameters
     ----------
-    XTrain : numpy matrix
-        The matrix containing samples features (not indices) for training.
-    YTrain : numpy array
-        The array containing labels for training.
-    args : List
-        The list of parameters to set up the NN model.
+    YTrue : ground truth
+    YPredict : predicted values
+
     Returns
-    -------
-    NN : NeuralNetwork object
-        This should be the trained NN object.
+    cm : Confusion matrix
+    accuracy : The accuracy of the predictions
+
     """
-    # 1. Initializes a network object with given args.
-    lr = args[0]
-    epochs = args[1]
-    reg = args[2]
-    hidden_layer = args[3]
-    sigmoid = args[4]
-    deltasig = args[5]
-    inputDimension = args[6]
-    n_classes = args[7]
-
-    model = NeuralNetwork(hidden_layer, sigmoid, deltasig, inputDimension, n_classes)
-    model.fit(XTrain, YTrain, lr, epochs, reg)
-    return model
-
-def test(XTest, model):
-    out = model.predict(XTest.T)
-    out[out >= 0.9] = 1
-    return out
+    len_labels = len(np.unique(YTrue))
+    cm = np.zeros((len_labels ,len_labels ), int )
+    for i in range(len(YTrue)):
+        cm[int(YTrue[i])][int(YPredict[i])] = cm[int(YTrue[i])][int(YPredict[i])] + 1
+    true_values = np.sum(np.diagonal(cm))
+    accuracy = float(true_values)/len(YTrue)
+    return cm,accuracy
