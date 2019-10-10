@@ -21,10 +21,9 @@ def plotDecisionBoundary(model, X, Y):
     plt.scatter(X[:, 0], X[:, 1], c=Y, cmap=plt.cm.bwr)
     plt.show()
 
-
 def crossValidate(X_train, Y_train, X_test, Y_test, l_rate, epochs, reg_lambda, params, plot=False):
 
-	net = TwoLayerMLP(params[:-1],params[3])
+	net = TwoLayerMLP(params[:-1],params[-1])
 	stats = net.train(X_train, Y_train,learning_rate=l_rate, reg=reg_lambda,  num_epochs=epochs, verbose=False)
 	output = net.predict(X_test)
 	if plot:
@@ -105,7 +104,7 @@ def main():
 	X_Train,X_Test = X[0],X[1]
 	Y_Train,Y_Test = Y[0].astype(int),Y[1].astype(int)
 	# net = TwoLayerMLP(X_Train.shape[1],10,150,2,"sigmoid")
-	stats = crossValidate(X_Train, Y_Train, X_Test, Y_Test, 1.5 , 250, 1e-2, [X_Train.shape[1],10,150,2])
+	stats = crossValidate(X_Train, Y_Train, X_Test, Y_Test, 1.5 , 250, 1e-2, [X_Train.shape[1],150,10,2])
 
 
 	# plot the loss history and gradient magnitudes

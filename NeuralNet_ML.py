@@ -4,34 +4,15 @@ import scipy.special as sp
 import matplotlib.pyplot as plt
 
 class TwoLayerMLP(object):
-  """
-  A two-layer fully-connected neural network. The net has an input dimension of
-  N, a hidden layer dimension of H, and performs classification over C classes.
-  We train the network with a softmax loss function and L2 regularization on the
-  weight matrices. The network uses a ReLU nonlinearity after the first fully
-  connected layer.
-  In other words, the network has the following architecture:
-
-  input - fully connected layer - ReLU - fully connected layer - softmax
-
-  The outputs of the second fully-connected layer are the scores for each class.
-  """
 
   def __init__(self, arch, std=1e-4):
     """
-    Initialize the model. Weights are initialized to small random values and
-    biases are initialized to zero. Weights and biases are stored in the
-    variable self.params, which is a dictionary with the following keys:
-
-    W1: First layer weights; has shape (D, H)
-    b1: First layer biases; has shape (H,)
-    W2: Second layer weights; has shape (H, C)
-    b2: Second layer biases; has shape (C,)
+    Weights - random values
+    Biases - set to zero
 
     Inputs:
-    - input_size: The dimension D of the input data.
-    - hidden_size: The number of neurons H in the hidden layer.
-    - output_size: The number of classes C.
+    - arch: array containing number of nodes in each layer
+    - std: standard deviation used for initializing weights
     """
     self.params = {}
     self.params['weights'] = []
@@ -43,26 +24,56 @@ class TwoLayerMLP(object):
         self.params['biases'].append(np.zeros(arch[i]))
 
   def forward(self, X):
+    """
+    Runs forward propagation on input
+
+    Parameters
+    ----------
+    Inputs
+    X - Input samples, shape - (N, D)
+
+    Outputs
+    acts - List containing the activation array of each layer. Activation array
+    contains the output values of each node in a layer
+    """
     z = X
-    acts = []
+    activations = []
     for i in range(self.size):
+        #Select weights and bias between each layer
         W, b = self.params['weights'][i], self.params['biases'][i]
-        z = np.dot(z, W) + b  # 1st layer activation, N*H
+
+        #Forward prop - done as matrix mult and adding bias at the end
+        z = np.dot(z, W) + b
         if i == self.size - 1:
-            acts.append(z)
+            activations.append(z) 
+            # If the current output value corresponds to the output layer,
+            # don't apply sigmoid to it, softmax will be applied later
             break
         z = sp.expit(z)
         if i < self.size - 1:
-            acts.append(z)
-        # [PLEASE IMPLEMENT] 2nd layer activation, N*C
-        # hint: involves W2, b2
-    return acts
+            activations.append(z)
+    return activations
 
   def get_loss(self, X, y, scores, reg):
+    """
+    Calculates the loss according to the outputs and inputs
+
+    Parameters
+    ----------
+    Inputs
+    X - input matrix, shape - (N, D)
+    y - ground truth array, shape - (N, 1)
+    scores - the last column of activation array, corresponds to outputs at output layer
+    reg - regularization term
+
+    Outputs
+    loss - the loss value calculated using cross entropy
+    P - array containing softmax values of outputs
+    """
     N, D = X.shape
-    A = np.max(scores, axis=1) # N*1
-    F = np.exp(scores - A.reshape(N, 1))  # N*C
-    P = F / np.sum(F, axis=1).reshape(N, 1)  # N*C
+    A = np.max(scores, axis=1)
+    F = np.exp(scores - A.reshape(N, 1))
+    P = F / np.sum(F, axis=1).reshape(N, 1)
     loss = np.mean(-np.log(P[range(y.shape[0]), y]))
 
     for i in range(self.size):
@@ -70,38 +81,50 @@ class TwoLayerMLP(object):
         loss += 0.5 * reg * np.sum(W * W)
     return loss, P
   
-  def backprop(self, X, y, P, acts, reg):
+  def backprop(self, X, y, P, activations, reg):
+    """
+    Backprop function to compute gradients based on loss and layer activations
+
+    Parameters
+    ----------
+    Inputs
+    X - input array, shape - (N, D)
+    y - ground truth array, shape - (N, 1)
+    P - softmax activation of output layer
+    acts - activations of each layer
+    reg - regularization term
+
+    Outputs
+    grads - dictionary containing keys weights and biases, each of which contains the gradients per layer
+    """
     W1, b1 = self.params['weights'][0], self.params['biases'][0]
     W2, b2 = self.params['weights'][1], self.params['biases'][1]
     _, C = W2.shape
     N, D = X.shape
     grads = {}
-    ###########################################################################
-    # write your own code where you see [PLEASE IMPLEMENT]
-    #
-    # Compute the backward pass, computing the derivatives of the weights
-    # and biases. Store the results in the grads dictionary. For example,
-    # grads['W1'] should store the gradient on W1, and be a matrix of same size
-    ###########################################################################
+    
 
     # output layer
     y_1hot = np.zeros((N,C))
     for i in range(N):
         y_1hot[i,y[i]] = 1
-    dscore = P - y_1hot # [PLEASE IMPLEMENT] partial derivative of loss wrt. the logits (dL/dz)
-    dW = [0] * self.size
-    dB = [0] * self.size
-    # dW2 = np.dot(h1.T, dscore)/N # partial derivative of loss wrt. W2
-    # db2 = np.mean(dscore, axis=0)     # partial derivation of loss wrt. b2
-    dW[-1] = np.dot(acts[-1].T, dscore)/N
-    dB[-1] = np.mean(dscore, axis=0)
-    acts = [X] + acts
+    dEx = P - y_1hot # partial derivative of loss w.r.t output
+    dW = [0] * self.size # weight gradients array
+    dB = [0] * self.size # bias gradients array
+
+    # partial derivative of loss w.r.t weight matrix between hidden layer and output layer
+    dW[-1] = np.dot(activations[-1].T, dEx)/N
+    # partial derivative of loss w.r.t output node bias
+    dB[-1] = np.mean(dEx, axis=0)
+    
+    activations = [X] + activations
     for i in range(self.size - 2, -1, -1):
         W = self.params['weights'][i + 1]
-        dEy = np.dot(dscore, W.T)
-        dscore = (acts[i + 1]*(1 - acts[i + 1])) * dEy
-        dW[i] = np.dot(acts[i].T, dscore)/acts[i].shape[0]
-        dB[i] = np.mean(dscore, axis = 0)
+        dEy = np.dot(dEx, W.T)
+        dEx = (activations[i + 1]*(1 - activations[i + 1])) * dEy
+        # partial derivative of loss w.r.t weight matrix between hidden layer and output layer
+        dW[i] = np.dot(activations[i].T, dEx)/activations[i].shape[0]
+        dB[i] = np.mean(dEx, axis = 0)
     grads['weights'] = dW
     grads['biases'] = dB
 
@@ -109,51 +132,38 @@ class TwoLayerMLP(object):
 
   def train(self, X, y, learning_rate=1e-3, reg=1e-5, num_epochs=10, verbose=False):
     """
-    Train this neural network using stochastic gradient descent.
+    Train this neural network using batch gradient descent.
 
-    Inputs:
-    - X: A numpy array of shape (N, D) giving training data.
-    - y: A numpy array f shape (N,) giving training labels; y[i] = c means that
-      X[i] has label c, where 0 <= c < C.
-    - X_val: A numpy array of shape (N_val, D) giving validation data.
-    - y_val: A numpy array of shape (N_val,) giving validation labels.
-    - learning_rate: Scalar giving learning rate for optimization.
-    - learning_rate_decay: Scalar giving factor used to decay the learning rate
-      after each epoch.
-    - reg: Scalar giving regularization strength.
-    - num_iters: Number of steps to take when optimizing.
-    - batch_size: Number of training examples to use per step.
-    - verbose: boolean; if true print progress during optimization.
+    Inputs
+    X: Training samples, shape - (N, D)
+    y: Training labels, shape - (N, 1)
+    learning_rate: Scalar giving learning rate for optimization
+    reg: Scalar giving regularization strength
+    num_epochs: Number of epochs
+    verbose: boolean; if true print progress during optimization
+
+    Outputs
+    {
+        loss_history : history of loss values for each epoch
+        train_acc_history: history of training accuracy for each epoch
+    }
     """
-    # num_train = X.shape[0]
-    # iterations_per_epoch = max(num_train / batch_size, 1)
-    # epoch_num = 0
 
-    # Use SGD to optimize the parameters in self.model
     loss_history = []
-    grad_magnitude_history = []
     train_acc_history = []
-    val_acc_history = []
 
-    np.random.seed(1)
     for epoch in range(num_epochs):
-        X1 = X
-        Y1 = y
-        
-        # Compute loss and gradients using the current minibatch
-        acts = self.forward(X)
-        loss, P = self.get_loss(X, y, acts[-1], reg)
-        grads = self.backprop(X, y, P, acts[:-1], reg)
+
+        activations = self.forward(X)
+        loss, P = self.get_loss(X, y, activations[-1], reg)
+        grads = self.backprop(X, y, P, activations[:-1], reg)
         loss_history.append(loss)
 
-        # do gradient descent
         for i in range(self.size):
             self.params['weights'][i] -= grads['weights'][i] * learning_rate
             self.params['biases'][i] -= grads['biases'][i] * learning_rate
 
-        # Every epoch, check train and val accuracy and decay learning rate.
-        # Check accuracy
-        train_acc = (self.predict(X1) == Y1).mean()
+        train_acc = (self.predict(X) == y).mean()
         train_acc_history.append(train_acc)
         if verbose:
             print('Epoch %d: loss %f, train_acc %f'%(
@@ -161,50 +171,41 @@ class TwoLayerMLP(object):
 
     return {
       'loss_history': loss_history,
-      'grad_magnitude_history': grad_magnitude_history, 
       'train_acc_history': train_acc_history,
-      # 'val_acc_history': val_acc_history,
     }
 
 
   def predict(self, X):
     """
-    Use the trained weights of this two-layer network to predict labels for
-    data points. For each data point we predict scores for each of the C
-    classes, and assign each data point to the class with the highest score.
+    Returns the predictions according to the current state of the model
 
+    Parameters
+    ----------
     Inputs:
-    - X: A numpy array of shape (N, D) giving N D-dimensional data points to
-      classify.
+    - X: Numpy array of shape (N, D)
 
-    Returns:
-    - y_pred: A numpy array of shape (N,) giving predicted labels for each of
-      the elements of X. For all i, y_pred[i] = c means that X[i] is predicted
-      to have class c, where 0 <= c < C.
+    Outputs:
+    - y_pred: Numpy array of shape (N, 1) containing predictions of each sample in X
     """
 
-    ###########################################################################
-    # [PLEASE IMPLEMENT]
-    # hint: it should be very easy
     y_pred = self.forward(X)[-1]
-    y_pred =  np.argmax(np.exp(y_pred)/np.exp(np.sum(y_pred,axis=1)).reshape(-1,1),axis=1)
-    # print y_pred
-    ###########################################################################
-
+    y_pred = np.exp(y_pred)/np.exp(np.sum(y_pred,axis=1)).reshape(-1,1)
+    y_pred =  np.argmax(y_pred,axis=1)
     return y_pred
 
 def getConfusionMatrix(YTrue, YPredict):
     """
     Computes the confusion matrix.
+    
     Parameters
     ----------
-    YTrue : numpy array
-        This array contains the ground truth.
-    YPredict : numpy array
-        This array contains the predictions.
+    YTrue : ground truth
+    YPredict : predicted values
+
     Returns
-    CM : numpy matrix
-        The confusion matrix.
+    cm : Confusion matrix
+    accuracy : The accuracy of the predictions
+
     """
     len_labels = len(np.unique(YTrue))
     cm = np.zeros((len_labels ,len_labels ), int )
