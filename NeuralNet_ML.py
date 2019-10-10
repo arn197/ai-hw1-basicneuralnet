@@ -17,7 +17,7 @@ class TwoLayerMLP(object):
   The outputs of the second fully-connected layer are the scores for each class.
   """
 
-  def __init__(self, input_size, hidden_size, output_size, std=1e-4, activation='relu'):
+  def __init__(self, arch, std=1e-4):
     """
     Initialize the model. Weights are initialized to small random values and
     biases are initialized to zero. Weights and biases are stored in the
@@ -34,11 +34,104 @@ class TwoLayerMLP(object):
     - output_size: The number of classes C.
     """
     self.params = {}
-    self.params['W1'] = std * np.random.randn(input_size, hidden_size)
-    self.params['b1'] = np.zeros(hidden_size)
-    self.params['W2'] = std * np.random.randn(hidden_size, output_size)
-    self.params['b2'] = np.zeros(output_size)
-    self.activation = activation
+    self.params['weights'] = []
+    self.params['biases'] = []
+    self.size = len(arch) - 1
+    self.arch = arch
+    for i in range(1, len(arch)):
+        self.params['weights'].append(std * np.random.randn(arch[i - 1], arch[i]))
+        self.params['biases'].append(np.zeros(arch[i]))
+    # for i in self.params['weights']:
+        # print i.shape
+    # self.params['W1'] = std * np.random.randn(input_size, hidden_size)
+    # self.params['b1'] = np.zeros(hidden_size)
+    # self.params['W2'] = std * np.random.randn(hidden_size, output_size)
+    # self.params['b2'] = np.zeros(output_size)
+    # print self.params['W1'].shape
+    # print self.params['W2'].shape
+
+  def forward(self, X):
+    z = X
+    acts = []
+    for i in range(self.size):
+        W, b = self.params['weights'][i], self.params['biases'][i]
+        # W2, b2 = self.params['W2'], self.params['b2']
+        z = np.dot(z, W) + b  # 1st layer activation, N*H
+        if i == self.size - 1:
+            acts.append(z)
+            break
+        z = sp.expit(z)
+        if i < self.size - 1:
+            acts.append(z)
+        # [PLEASE IMPLEMENT] 2nd layer activation, N*C
+        # hint: involves W2, b2
+        # scores = np.dot(h1,W2) + b2
+    return acts
+
+  def get_loss(self, X, y, scores, reg):
+    N, D = X.shape
+    A = np.max(scores, axis=1) # N*1
+    F = np.exp(scores - A.reshape(N, 1))  # N*C
+    P = F / np.sum(F, axis=1).reshape(N, 1)  # N*C
+    loss = np.mean(-np.log(P[range(y.shape[0]), y]))
+    # loss = np.mean(-np.choose(y, scores.T) + np.log(np.sum(F, axis=1)) + A)
+
+    for i in range(self.size):
+        # add regularization terms
+        W = self.params['weights'][i]
+        loss += 0.5 * reg * np.sum(W * W)
+    return loss, P
+  
+  def backprop(self, X, y, P, acts, reg):
+    W1, b1 = self.params['weights'][0], self.params['biases'][0]
+    W2, b2 = self.params['weights'][1], self.params['biases'][1]
+    _, C = W2.shape
+    N, D = X.shape
+    grads = {}
+    ###########################################################################
+    # write your own code where you see [PLEASE IMPLEMENT]
+    #
+    # Compute the backward pass, computing the derivatives of the weights
+    # and biases. Store the results in the grads dictionary. For example,
+    # grads['W1'] should store the gradient on W1, and be a matrix of same size
+    ###########################################################################
+
+    # output layer
+    y_1hot = np.zeros((N,C))
+    for i in range(N):
+        y_1hot[i,y[i]] = 1
+    dscore = P - y_1hot # [PLEASE IMPLEMENT] partial derivative of loss wrt. the logits (dL/dz)
+    dW = [0] * self.size
+    dB = [0] * self.size
+    # dW2 = np.dot(h1.T, dscore)/N # partial derivative of loss wrt. W2
+    # db2 = np.mean(dscore, axis=0)     # partial derivation of loss wrt. b2
+    dW[-1] = np.dot(acts[-1].T, dscore)/N
+    dB[-1] = np.mean(dscore, axis=0)
+    acts = [X] + acts
+    for i in range(self.size - 2, -1, -1):
+        W = self.params['weights'][i + 1]
+        dEy = np.dot(dscore, W.T)
+        dscore = (acts[i + 1]*(1 - acts[i + 1])) * dEy
+        dW[i] = np.dot(acts[i].T, dscore)/acts[i].shape[0]
+        dB[i] = np.mean(dscore, axis = 0)
+    # hidden layer
+    # dhidden = np.dot(dscore,W2.T)
+    # dz1 = (h1*(1-h1)) * dhidden
+
+    # # first layer
+    # dW1 = np.dot(X.T,dz1)/N # [PLEASE IMPLEMENT]
+    # db1 = np.mean(dz1,axis=0) # [PLEASE IMPLEMENT]
+    # ###########################################################################
+    # #                            END OF YOUR CODE
+    # ###########################################################################
+    grads['weights'] = dW
+    grads['biases'] = dB
+    # grads['W2'] = dW2 + (reg * W2)
+    # grads['b2'] = db2
+    # grads['W1'] = dW1 + (reg * W1)
+    # grads['b1'] = db1
+
+    return grads
 
 
   def loss(self, X, y=None, reg=0.0):
@@ -65,10 +158,6 @@ class TwoLayerMLP(object):
       with respect to the loss function; has the same keys as self.params.
     """
     # Unpack variables from the params dictionary
-    W1, b1 = self.params['W1'], self.params['b1']
-    W2, b2 = self.params['W2'], self.params['b2']
-    _, C = W2.shape
-    N, D = X.shape
 
     # Compute the forward pass
     ###########################################################################
@@ -78,89 +167,29 @@ class TwoLayerMLP(object):
     # Store the result in the scores variable, which should be an array of
     # shape (N, C).
     ###########################################################################
-    z1 = np.dot(X, W1) + b1  # 1st layer activation, N*H
+    scores, h1 = self.forward(X)
 
-    # 1st layer nonlinearity, N*H
-    if self.activation is 'relu':
-        # [PLEASE IMPLEMENT]
-        #raise NotImplementedError('ReLU forward not implemented')
-        h1 = np.maximum(0,z1)
-    elif self.activation is 'sigmoid':
-        h1 = sp.expit(z1)
-        #raise NotImplementedError('Sigmoid forward not implemented')
-    else:
-        raise ValueError('Unknown activation type')
-        
-    # [PLEASE IMPLEMENT] 2nd layer activation, N*C
-    # hint: involves W2, b2
-    scores = np.dot(h1,W2) + b2
-
-     
-    ###########################################################################
+    ####################################s#######################################
     #                            END OF YOUR CODE
     ###########################################################################
     
     # If the targets are not given then jump out, we're done
     if y is None:
       return scores
-
+      """
+    scores_f = np.expit(scores)
+    loss =
+    """
     # cross-entropy loss with log-sum-exp
-    A = np.max(scores, axis=1) # N*1
-    F = np.exp(scores - A.reshape(N, 1))  # N*C
-    P = F / np.sum(F, axis=1).reshape(N, 1)  # N*C
-    loss = np.mean(-np.choose(y, scores.T) + np.log(np.sum(F, axis=1)) + A)
-    # add regularization terms
-    loss += 0.5 * reg * np.sum(W1 * W1)
-    loss += 0.5 * reg * np.sum(W2 * W2)
+    loss, P = self.get_loss(X, y, scores, reg)
+    grads = self.backprop(X, y, P, h1, reg)
 
     # Backward pass: compute gradients
-    grads = {}
-    ###########################################################################
-    # write your own code where you see [PLEASE IMPLEMENT]
-    #
-    # Compute the backward pass, computing the derivatives of the weights
-    # and biases. Store the results in the grads dictionary. For example,
-    # grads['W1'] should store the gradient on W1, and be a matrix of same size
-    ###########################################################################
-
-    # output layer
-    y_1hot = np.zeros((N,C))
-    for i in range(N):
-    	y_1hot[i,y[i]] = 1 
-    dscore = P - y_1hot # [PLEASE IMPLEMENT] partial derivative of loss wrt. the logits (dL/dz)
-    dW2 = np.dot(h1.T, dscore)/N # partial derivative of loss wrt. W2
-    db2 = np.mean(dscore, axis=0)     # partial derivation of loss wrt. b2
-
-    # hidden layer
-    dhidden = np.dot(dscore,W2.T) 
-    if self.activation is 'relu':
-        dz1 = dhidden
-        dz1[z1 <= 0] = 0
-
-    elif self.activation is 'sigmoid':
-         dz1 = (h1*(1-h1)) * dhidden
-       # raise NotImplementedError('Sigmoid backward not implemented')
-    else:
-        raise ValueError('Unknown activation type')
-
-    # first layer
-    dW1 = np.dot(X.T,dz1)/N # [PLEASE IMPLEMENT]
-    db1 = np.mean(dz1,axis=0) # [PLEASE IMPLEMENT]
-    ###########################################################################
-    #                            END OF YOUR CODE
-    ###########################################################################
-
-    grads['W2'] = dW2 + (reg * W2)
-    grads['b2'] = db2
-    grads['W1'] = dW1 + (reg * W1)
-    grads['b1'] = db1
+    
     return loss, grads
 
 
-  def train(self, X, y, X_val, y_val,
-            learning_rate=1e-3, learning_rate_decay=0.95,
-            reg=1e-5, num_epochs=10,
-            batch_size=200, verbose=False):
+  def train(self, X, y, learning_rate=1e-3, reg=1e-5, num_epochs=10, verbose=False):
     """
     Train this neural network using stochastic gradient descent.
 
@@ -178,9 +207,9 @@ class TwoLayerMLP(object):
     - batch_size: Number of training examples to use per step.
     - verbose: boolean; if true print progress during optimization.
     """
-    num_train = X.shape[0]
-    iterations_per_epoch = max(num_train / batch_size, 1)
-    epoch_num = 0
+    # num_train = X.shape[0]
+    # iterations_per_epoch = max(num_train / batch_size, 1)
+    # epoch_num = 0
 
     # Use SGD to optimize the parameters in self.model
     loss_history = []
@@ -188,50 +217,56 @@ class TwoLayerMLP(object):
     train_acc_history = []
     val_acc_history = []
 
-    np.random.seed(1)
+    # np.random.seed(1)
     for epoch in range(num_epochs):
         # fixed permutation (within this epoch) of training data
-        perm = np.random.permutation(num_train)
-
+        # perm = np.random.permutation(num_train)
+        X1 = X
+        Y1 = y
         # go through minibatches
-        for it in range(int(iterations_per_epoch)):
-            X_batch = None
-            y_batch = None
+        # for it in range(int(iterations_per_epoch)):
+        # Create a random minibatch
 
-            # Create a random minibatch
-            idx = perm[it*batch_size:(it+1)*batch_size]
-            X_batch = X[idx, :]
-            y_batch = y[idx]
+        # Compute loss and gradients using the current minibatch
+        acts = self.forward(X)
+        loss, P = self.get_loss(X, y, acts[-1], reg)
+        grads = self.backprop(X, y, P, acts[:-1], reg)
+        # loss, grads = self.loss(X_batch, y=y_batch, reg=reg)
+        loss_history.append(loss)
 
-            # Compute loss and gradients using the current minibatch
-            loss, grads = self.loss(X_batch, y=y_batch, reg=reg)
-            loss_history.append(loss)
-
-            # do gradient descent
-            for param in self.params:
-                self.params[param] -= grads[param] * learning_rate
+        # do gradient descent
+        # for i in range(self.size):
+        for i in range(self.size):
+            self.params['weights'][i] -= grads['weights'][i] * learning_rate
+            self.params['biases'][i] -= grads['biases'][i] * learning_rate
+            # print self.params['weights'][1].shape, grads['weights'][1].shape
+            # self.params['weights'] -= grads['weights'] * learning_rate
+            # self.params['biases'] -= grads['biases'] * learning_rate
+                # self.params[param] -= grads[param] * learning_rate
 
             # record gradient magnitude (Frobenius) for W1
-            grad_magnitude_history.append(np.linalg.norm(grads['W1']))
+            # grad_magnitude_history.append(np.linalg.norm(grads['W1']))
 
         # Every epoch, check train and val accuracy and decay learning rate.
         # Check accuracy
-        train_acc = (self.predict(X_batch) == y_batch).mean()
-        val_acc = (self.predict(X_val) == y_val).mean()
+        # print getConfusionMatrix(y, self.predict(X))
+        # print np.mean(self.predict(X) - y)
+        train_acc = (self.predict(X1) == Y1).mean()
+        # val_acc = (self.predict(X_va) == y_val).mean()
         train_acc_history.append(train_acc)
-        val_acc_history.append(val_acc)
+        # val_acc_history.append(val_acc)
         if verbose:
-            print('Epoch %d: loss %f, train_acc %f, val_acc %f'%(
-                epoch+1, loss, train_acc, val_acc))
+            print('Epoch %d: loss %f, train_acc %f'%(
+                epoch+1, loss, train_acc))
 
         # Decay learning rate
-        learning_rate *= learning_rate_decay
+        # learning_rate *= learning_rate_decay
 
     return {
       'loss_history': loss_history,
       'grad_magnitude_history': grad_magnitude_history, 
       'train_acc_history': train_acc_history,
-      'val_acc_history': val_acc_history,
+      # 'val_acc_history': val_acc_history,
     }
 
 
@@ -254,7 +289,9 @@ class TwoLayerMLP(object):
     ###########################################################################
     # [PLEASE IMPLEMENT]
     # hint: it should be very easy
-    y_pred =  np.argmax(np.exp(self.loss(X))/np.exp(np.sum(self.loss(X),axis=1)).reshape(-1,1),axis=1)
+    y_pred = self.forward(X)[-1]
+    y_pred =  np.argmax(np.exp(y_pred)/np.exp(np.sum(y_pred,axis=1)).reshape(-1,1),axis=1)
+    # print y_pred
     ###########################################################################
 
     return y_pred
@@ -277,7 +314,8 @@ def getConfusionMatrix(YTrue, YPredict):
     for i in range(len(YTrue)):
         cm[int(YTrue[i])][int(YPredict[i])] = cm[int(YTrue[i])][int(YPredict[i])] + 1
     true_values = np.sum(np.diagonal(cm))
-    accuracy = true_values/len(YTrue)
+    accuracy = float(true_values)/len(YTrue)
+    # print accuracy
     return cm,accuracy
                 
 
@@ -291,13 +329,19 @@ def main():
     X = np.array(dfx)
     Y = np.array(dfy)
     Y_int = Y.astype(int)
-    net = TwoLayerMLP(X.shape[1],2,2,2,"sigmoid")
-    stats = net.train(X, Y_int, X, Y_int,
-              learning_rate=2, reg=1e-5,
-              num_epochs=1000, verbose=False)
-    print('Final training loss: ', stats['loss_history'][-1])
+    net = TwoLayerMLP([2, 3, 2], 2)
+    stats = net.train(X, Y_int, learning_rate=0.00001, reg=1e-5, num_epochs=1000, verbose=True)
+    # print('Final training loss: ', stats['loss_history'][-1])
     output = net.predict(X)
     print(getConfusionMatrix(Y_int,output.reshape(output.shape[0],1)))
-       
+    print('Final training loss: ', stats['loss_history'][-1])
+
+    # plot the loss history and gradient magnitudes
+    plt.subplot(2, 1, 1)
+    plt.plot(stats['loss_history'])
+    plt.xlabel('epoch')
+    plt.ylabel('training loss')
+    plt.title('Training Loss history')
+          
 if __name__ == '__main__':
     main()

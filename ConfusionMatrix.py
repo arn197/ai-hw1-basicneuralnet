@@ -15,13 +15,11 @@ def getConfusionMatrix(YTrue, YPredict):
     CM : numpy matrix
         The confusion matrix.
     """
-    YPredict = YPredict.T.flatten()
     len_labels = len(np.unique(YTrue))
     cm = np.zeros((len_labels ,len_labels ), int )
     for i in range(len(YTrue)):
         cm[int(YTrue[i])][int(YPredict[i])] = cm[int(YTrue[i])][int(YPredict[i])] + 1
     return cm
-                
                 
     
 def getPerformanceScores(YTrue, YPredict):
@@ -42,12 +40,19 @@ def getPerformanceScores(YTrue, YPredict):
         This should be a dictionary.
     """
     cm = getConfusionMatrix(YTrue,YPredict)
+
     true_values = np.sum(np.diagonal(cm))
-    accuracy = float(true_values)/len(YTrue)
-    precision = 0
-    recall = 0
-    f1 = 0
+    accuracy = true_values/len(YTrue)
+
+    precision = np.zeros(cm.shape[0])
+    recall = np.zeros(cm.shape[0])
+
+    for i in range(cm.shape[0]):
+        print(cm[i][i],cm[0:,i])
+        precision[i] = cm[i][i]/np.sum(cm[0:,i])
+    for i in range(cm.shape[0]):
+        recall[i] = cm[i][i]/np.sum(cm[i])
+    f1 = np.divide(2*(np.multiply(precision,recall)),precision+recall)
+
     result =  {"CM" : cm, "accuracy" : accuracy, "precision" : precision, "recall" : recall, "f1" : f1}
     return result
-    
-    
